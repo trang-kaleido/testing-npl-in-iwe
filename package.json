@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "typecheck": "echo 'spike: JS only, typecheck skipped'",
+    "test": "npm run test --prefix frontend"
+  },
   "devDependencies": {
     "@ai-hero/sandcastle": "^0.9.0"
   }
