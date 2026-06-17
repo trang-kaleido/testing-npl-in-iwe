@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KALEIDO NLP Spike — Accuracy</title>
+  <style>
+    body {
+      margin: 40px auto;
+      max-width: 800px;
+      font-family: system-ui, sans-serif;
+      color: #222;
+    }
+    h1 { font-size: 1.1em; font-weight: 600; margin-bottom: 4px; }
+    p.hint { font-size: 0.85em; color: #666; margin-bottom: 8px; }
+    .legend {
+      display: flex;
+      gap: 16px;
+      font-size: 0.8em;
+      margin-bottom: 16px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .swatch {
+      width: 28px;
+      height: 3px;
+      border-radius: 2px;
+    }
+    .swatch-grammar { background: red; }
+    .swatch-spelling { background: blue; }
+    .swatch-style    { background: #888; }
+    #editor {
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+
+    /* ── Squiggle colors by category ── */
+    .cm-squiggle-grammar {
+      text-decoration: underline wavy red;
+      text-underline-offset: 2px;
+    }
+    .cm-squiggle-spelling {
+      text-decoration: underline wavy blue;
+      text-underline-offset: 2px;
+    }
+    .cm-squiggle-style {
+      text-decoration: underline wavy #888;
+      text-underline-offset: 2px;
+    }
+
+    /* ── Hover popover ── */
+    .cm-accuracy-tooltip {
+      padding: 8px 12px;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      font-size: 0.85rem;
+      max-width: 340px;
+      line-height: 1.4;
+    }
+    .cm-accuracy-message {
+      margin: 0 0 6px;
+      color: #333;
+    }
+    .cm-accuracy-replacements {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .cm-accuracy-replacement {
+      background: #f0f4ff;
+      border: 1px solid #aac;
+      border-radius: 3px;
+      padding: 2px 8px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      color: #224;
+    }
+    .cm-accuracy-replacement:hover {
+      background: #dde8ff;
+    }
+  </style>
+</head>
+<body>
+  <h1>KALEIDO accuracy spike</h1>
+  <p class="hint">Type a sentence and end it with <code>.</code> <code>?</code> or <code>!</code> — errors appear as squiggles. Hover to see the message and apply a fix.</p>
+  <div class="legend">
+    <span class="legend-item"><span class="swatch swatch-grammar"></span> grammar</span>
+    <span class="legend-item"><span class="swatch swatch-spelling"></span> spelling</span>
+    <span class="legend-item"><span class="swatch swatch-style"></span> style</span>
+  </div>
+  <div id="editor"></div>
+  <script type="module" src="/src/editor.js"></script>
+</body>
+</html>
