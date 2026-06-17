@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Skill runner
+.sandcastle/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Build / env
+dist/
+.env
+.env.local
