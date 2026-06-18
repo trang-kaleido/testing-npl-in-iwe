@@ -43,16 +43,16 @@ describe('lookupGhost', () => {
 });
 
 describe('FORCED_CONTINUATIONS', () => {
-  it('includes "have an impact" → " on"', () => {
-    const entry = FORCED_CONTINUATIONS.find(([p]) => p === 'have an impact');
-    expect(entry).toBeDefined();
-    expect(entry[1]).toBe(' on');
-  });
-
-  it('includes "According" → " to"', () => {
-    const entry = FORCED_CONTINUATIONS.find(([p]) => p === 'According');
+  it('includes "according" → " to"', () => {
+    const entry = FORCED_CONTINUATIONS.find(([p]) => p === 'according');
     expect(entry).toBeDefined();
     expect(entry[1]).toBe(' to');
+  });
+
+  it('includes "in front" → " of"', () => {
+    const entry = FORCED_CONTINUATIONS.find(([p]) => p === 'in front');
+    expect(entry).toBeDefined();
+    expect(entry[1]).toBe(' of');
   });
 });
 
@@ -62,9 +62,9 @@ describe('ghostField', () => {
   }
 
   it('computes a suggestion when the cursor is after a known phrase', () => {
-    const doc = 'This will have an impact';
+    const doc = 'The trophy sits in front';
     const state = stateAt(doc, doc.length);
-    expect(state.field(ghostField).suggestion).toBe(' on');
+    expect(state.field(ghostField).suggestion).toBe(' of');
   });
 
   it('shows no suggestion when the prefix is not a known phrase', () => {
@@ -74,15 +74,15 @@ describe('ghostField', () => {
   });
 
   it('shows no suggestion when the cursor is at position 0 (no prefix)', () => {
-    const doc = 'have an impact';
+    const doc = 'in front';
     const state = stateAt(doc, 0);
     expect(state.field(ghostField).suggestion).toBeNull();
   });
 
   it('clears the suggestion when the user types past a known phrase', () => {
-    const doc = 'have an impact';
+    const doc = 'in front';
     let state = stateAt(doc, doc.length);
-    expect(state.field(ghostField).suggestion).toBe(' on');
+    expect(state.field(ghostField).suggestion).toBe(' of');
 
     // Simulate real typing: change + cursor advances past the inserted char
     state = state.update({
@@ -93,17 +93,17 @@ describe('ghostField', () => {
   });
 
   it('updates to a new suggestion when the phrase changes', () => {
-    const doc = 'have an impact';
+    const doc = 'in front';
     let state = stateAt(doc, doc.length);
     state = state.update({
-      changes: { from: 0, to: doc.length, insert: 'in terms' },
+      changes: { from: 0, to: doc.length, insert: 'according' },
     }).state;
-    expect(state.field(ghostField).suggestion).toBe(' of');
+    expect(state.field(ghostField).suggestion).toBe(' to');
   });
 
   it('uses text after the last terminator as the current sentence', () => {
-    const doc = 'He went. She noted this in terms';
+    const doc = 'He went. She arrived according';
     const state = stateAt(doc, doc.length);
-    expect(state.field(ghostField).suggestion).toBe(' of');
+    expect(state.field(ghostField).suggestion).toBe(' to');
   });
 });

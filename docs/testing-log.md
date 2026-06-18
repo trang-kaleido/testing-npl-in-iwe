@@ -2,7 +2,13 @@
 
 Manual test notes for the local-NLP diagnostics spike. Append-only, newest entry on top.
 
-## 2026-06-18 — recheck-after-correction loop
+## 2026-06-18 — ghost text data source replaced (issue #6)
+
+**Bug found**: the shipped trie (`FORCED_CONTINUATIONS` in `frontend/src/ghost.js`) was 14 hand-typed phrase→continuation pairs with no cited source — it only ever matched those exact 14 strings, so there was nothing generalizable to test. Reopened #6.
+
+**Fix**: replaced it with a list extracted and empirically validated from the STREUSLE corpus (`scripts/extract_ghost_continuations.py`, see that file for the pinned commit and method) — a prefix only counts as "forced" if every occurrence of it anywhere in the corpus is followed by the same word, with at least 2 occurrences. Result: 6 entries (`as soon`→` as`, `in front`→` of`, `in the middle`→` of`, `according`→` to`, `in need`→` of`, `when it comes`→` to`), down from 14, but every entry is now corpus-validated rather than invented.
+
+**Domain-fit gap (open)**: STREUSLE is hand-annotated Yelp reviews, not academic writing. Checked directly: none of the original IELTS-register phrases ("in terms of", "with regard to", "as opposed to", "a wide range of", etc.) occur in the corpus at all, except "regardless of" / "in spite of" (which didn't pass the ≥2-occurrence cardinality check). So the shipped list proves the extraction *method* works, but doesn't yet cover academic-register ghost text — that needs a different, academic-domain corpus with comparable MWE annotation, which wasn't found in this pass.
 
 **Implemented**: edits that overlap an existing diagnostic's span (manual retyping or clicking a suggestion) now trigger an automatic recheck of that sentence, instead of only rechecking when the user retypes the sentence terminator. This closes the "sequential reveal" gap from the entry below: correcting `"Many person has problem with me."` to `"Many people has problem with me."` now immediately surfaces the newly-revealed `PEOPLE_VBZ` flag on "has", without waiting for the user to retype the period.
 
