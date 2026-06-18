@@ -48,6 +48,12 @@
       text-underline-offset: 2px;
     }
 
+    /* ── Ghost text ── */
+    .cm-ghost-text {
+      color: #aaa;
+      pointer-events: none;
+    }
+
     /* ── Hover popover ── */
     .cm-accuracy-tooltip {
       padding: 8px 12px;
@@ -84,7 +90,7 @@
 </head>
 <body>
   <h1>KALEIDO accuracy spike</h1>
-  <p class="hint">Type a sentence and end it with <code>.</code> <code>?</code> or <code>!</code> — errors appear as squiggles. Hover to see the message and apply a fix.</p>
+  <p class="hint">Type a sentence and end it with <code>.</code> <code>?</code> or <code>!</code> — errors appear as squiggles. Hover to see the message and apply a fix. Ghost text appears for forced continuations (e.g. "have an impact" → <em>on</em>); press <kbd>Tab</kbd> to accept.</p>
   <div class="legend">
     <span class="legend-item"><span class="swatch swatch-grammar"></span> grammar</span>
     <span class="legend-item"><span class="swatch swatch-spelling"></span> spelling</span>

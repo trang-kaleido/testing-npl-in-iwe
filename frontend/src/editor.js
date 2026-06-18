@@ -2,6 +2,7 @@ import { EditorView, ViewPlugin, Decoration, hoverTooltip } from '@codemirror/vi
 import { EditorState, StateField, StateEffect } from '@codemirror/state';
 import { basicSetup } from 'codemirror';
 import { squiggleClass } from './squiggle.js';
+import { ghostField, ghostKeymap } from './ghost.js';
 
 const BACKEND_URL = 'http://localhost:8000';
 const TERMINATOR_RE = /[.?!]/;
@@ -218,10 +219,12 @@ if (typeof document !== 'undefined' && document.getElementById('editor')) {
     state: EditorState.create({
       doc: '',
       extensions: [
+        ghostKeymap,
         basicSetup,
         diagnosticField,
         accuracyTooltip,
         sentenceDetector,
+        ghostField,
       ],
     }),
     parent: document.getElementById('editor'),
