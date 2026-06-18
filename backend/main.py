@@ -100,8 +100,6 @@ class InitContext(BaseModel):
 
 class StallRequest(BaseModel):
     current_sentence: str
-    cursor_before: str = ""
-    cursor_after: str = ""
     init_context: InitContext
 
 
@@ -184,8 +182,7 @@ def _sbert_scores(candidates: list[str], seed_destination: str) -> list[float]:
 
 @app.post("/stall")
 async def stall(req: StallRequest):
-    text = req.cursor_before or req.current_sentence
-    doc = nlp(text)
+    doc = nlp(req.current_sentence)
 
     candidates = _generate_candidates(doc, req.init_context.seeded_vocabulary)
     if not candidates:
