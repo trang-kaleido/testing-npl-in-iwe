@@ -3,6 +3,8 @@ import { EditorState, StateField, StateEffect } from '@codemirror/state';
 import { basicSetup } from 'codemirror';
 import { squiggleClass } from './squiggle.js';
 import { ghostField, ghostKeymap } from './ghost.js';
+import { stallField, makeStallPlugin } from './stall.js';
+import { INIT_CONTEXT } from './stall-context.js';
 
 const BACKEND_URL = 'http://localhost:8000';
 const TERMINATOR_RE = /[.?!]/;
@@ -225,6 +227,8 @@ if (typeof document !== 'undefined' && document.getElementById('editor')) {
         accuracyTooltip,
         sentenceDetector,
         ghostField,
+        stallField,
+        makeStallPlugin(INIT_CONTEXT),
       ],
     }),
     parent: document.getElementById('editor'),
