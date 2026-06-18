@@ -48,10 +48,8 @@ export function lookupGhost(trie, currentSentence) {
     if (start > 0 && text[start - 1] !== ' ') continue;
 
     let node = trie;
-    for (let i = start; i < text.length; i++) {
-      const ch = text[i];
-      if (!node.children[ch]) { node = null; break; }
-      node = node.children[ch];
+    for (let i = start; i < text.length && node; i++) {
+      node = node.children[text[i]];
     }
     if (node && node.continuation !== null) {
       if (found !== null && found !== node.continuation) return null;
@@ -96,11 +94,11 @@ export const ghostField = StateField.define({
     const suggestion = lookupGhost(TRIE, getCurrentSentence(state.doc.toString(), pos));
     return { suggestion, pos };
   },
-  update(st, tr) {
-    const newPos = tr.state.selection.main.head;
-    if (!tr.docChanged && newPos === st.pos) return st;
-    const suggestion = lookupGhost(TRIE, getCurrentSentence(tr.state.doc.toString(), newPos));
-    return { suggestion, pos: newPos };
+  update(prev, tr) {
+    const pos = tr.state.selection.main.head;
+    if (!tr.docChanged && pos === prev.pos) return prev;
+    const suggestion = lookupGhost(TRIE, getCurrentSentence(tr.state.doc.toString(), pos));
+    return { suggestion, pos };
   },
   provide(f) {
     return EditorView.decorations.from(f, ({ suggestion, pos }) => {
