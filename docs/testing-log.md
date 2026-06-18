@@ -2,6 +2,14 @@
 
 Manual test notes for the local-NLP diagnostics spike. Append-only, newest entry on top.
 
+## 2026-06-18 — recheck-after-correction loop
+
+**Implemented**: edits that overlap an existing diagnostic's span (manual retyping or clicking a suggestion) now trigger an automatic recheck of that sentence, instead of only rechecking when the user retypes the sentence terminator. This closes the "sequential reveal" gap from the entry below: correcting `"Many person has problem with me."` to `"Many people has problem with me."` now immediately surfaces the newly-revealed `PEOPLE_VBZ` flag on "has", without waiting for the user to retype the period.
+
+**Future scope — this does not fix LT's coverage gaps**: the recheck loop only helps when a fix changes the literal text enough to match a *different* existing LT rule. It does nothing for errors LT has no rule for at all, in any phrasing — e.g. the missing-article ("use car") and subject-verb-agreement ("air get polluted") misses noted below never get caught no matter how many times the sentence is rechecked, since there's no pattern to match in the first place. Closing that gap means changing the grammar-checking backend, not rechecking more.
+
+**Note for future investigation**: Grammarly's pipeline is reportedly a hybrid — a layer of fast, narrow, rule/pattern-based checks (similar in spirit to LanguageTool: explainable, low-latency, high-precision) combined with a neural GEC (Grammar Error Correction) model that handles the broader, parsing-dependent corrections rule-based systems miss, with a ranking/merge step reconciling both sets of suggestions. Worth verifying this against primary sources before committing engineering effort, but it maps onto our two earlier options (swap vs. augment): an "augment" path would mean keeping LT for its cheap/explainable matches and adding a GEC model alongside it for the rest, rather than fully replacing LT.
+
 ## 2026-06-18 — accuracy squiggles (issues #1, #2)
 
 **Setup**: LanguageTool sidecar (`erikvl87/languagetool` Docker image) + FastAPI backend + Vite frontend, run locally per `docs/dev-startup.md`.

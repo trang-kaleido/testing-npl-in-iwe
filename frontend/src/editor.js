@@ -57,6 +57,50 @@ export const diagnosticField = StateField.define({
   },
 });
 
+// ── Sentence bounds & recheck targeting ─────────────────────────────────────
+//
+// Pure helpers: given doc text and a position, find the enclosing completed
+// sentence; given prior diagnostics and a change, find which sentences need
+// rechecking because an edit touched a diagnosed span.
+
+export function findSentenceBounds(docText, pos) {
+  let prevTermPos = -1;
+  for (let i = pos - 1; i >= 0; i--) {
+    if (TERMINATOR_RE.test(docText[i])) { prevTermPos = i; break; }
+  }
+  let nextTermPos = -1;
+  for (let i = pos; i < docText.length; i++) {
+    if (TERMINATOR_RE.test(docText[i])) { nextTermPos = i; break; }
+  }
+  if (nextTermPos === -1) return null;
+
+  const rawStart = prevTermPos + 1;
+  const rawSentence = docText.slice(rawStart, nextTermPos + 1);
+  const leadingWS = rawSentence.length - rawSentence.trimStart().length;
+  return { sentence: rawSentence.trimStart(), sentenceStart: rawStart + leadingWS };
+}
+
+export function collectRecheckTargets(priorDiags, docText, changes) {
+  const overlapped = [];
+  changes.iterChanges((fromA, toA) => {
+    for (const d of priorDiags) {
+      if (d.from < toA && fromA < d.to) overlapped.push(d);
+    }
+  });
+
+  const seen = new Set();
+  const targets = [];
+  for (const d of overlapped) {
+    const mappedPos = changes.mapPos(d.from, 1);
+    const bounds = findSentenceBounds(docText, mappedPos);
+    if (!bounds || bounds.sentence.length <= 1) continue;
+    if (seen.has(bounds.sentenceStart)) continue;
+    seen.add(bounds.sentenceStart);
+    targets.push(bounds);
+  }
+  return targets;
+}
+
 // ── Hover popover ─────────────────────────────────────────────────────────────
 //
 // Shows the LanguageTool message and replacement buttons when hovering a squiggle.
@@ -136,39 +180,34 @@ async function checkAccuracy(sentence, sentenceStart, view) {
 
 // ── Sentence detection plugin ────────────────────────────────────────────────
 //
-// Fires checkAccuracy when a single terminator character (. ? !) is typed.
-// Extracts the completed sentence and maps backend span offsets to doc positions.
+// Fires checkAccuracy when a single terminator character (. ? !) is typed,
+// and also when an edit overlaps an existing diagnostic's span (a correction),
+// so newly-revealed errors (LT's rules are literal-pattern matches, so fixing
+// one error can expose another) surface without waiting for a terminator retype.
 
 const sentenceDetector = ViewPlugin.fromClass(class {
   update(update) {
     if (!update.docChanged) return;
 
     const docText = update.state.doc.toString();
+    const checkedStarts = new Set();
 
     update.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
       const insertedStr = inserted.toString();
       if (insertedStr.length !== 1 || !TERMINATOR_RE.test(insertedStr)) return;
 
-      const terminatorPos = fromB;
+      const bounds = findSentenceBounds(docText, fromB);
+      if (!bounds || bounds.sentence.length <= 1) return;
 
-      let prevTermPos = -1;
-      for (let i = terminatorPos - 1; i >= 0; i--) {
-        if (TERMINATOR_RE.test(docText[i])) {
-          prevTermPos = i;
-          break;
-        }
-      }
-
-      const rawStart = prevTermPos + 1;
-      const rawSentence = docText.slice(rawStart, terminatorPos + 1);
-      const leadingWS = rawSentence.length - rawSentence.trimStart().length;
-      const sentence = rawSentence.trimStart();
-      const sentenceStart = rawStart + leadingWS;
-
-      if (sentence.length > 1) {
-        checkAccuracy(sentence, sentenceStart, update.view);
-      }
+      checkedStarts.add(bounds.sentenceStart);
+      checkAccuracy(bounds.sentence, bounds.sentenceStart, update.view);
     });
+
+    const priorDiags = update.startState.field(diagnosticField);
+    for (const bounds of collectRecheckTargets(priorDiags, docText, update.changes)) {
+      if (checkedStarts.has(bounds.sentenceStart)) continue;
+      checkAccuracy(bounds.sentence, bounds.sentenceStart, update.view);
+    }
   }
 });
 
