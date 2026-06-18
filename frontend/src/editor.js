@@ -12,14 +12,17 @@ const TERMINATOR_RE = /[.?!]/;
 // Positions are mapped through document changes so squiggles track edits.
 // Decorations (squiggles) are derived from the field; class is determined by category.
 
-const addDiagnostics = StateEffect.define();
+export const addDiagnostics = StateEffect.define();
 
-const diagnosticField = StateField.define({
+export const diagnosticField = StateField.define({
   create: () => [],
   update(diags, tr) {
     let updated = diags;
     if (tr.docChanged) {
+      const changedRanges = [];
+      tr.changes.iterChanges((fromA, toA) => changedRanges.push([fromA, toA]));
       updated = updated
+        .filter(d => !changedRanges.some(([cf, ct]) => d.from < ct && cf < d.to))
         .map(d => ({
           ...d,
           from: tr.changes.mapPos(d.from, 1),
@@ -29,7 +32,9 @@ const diagnosticField = StateField.define({
     }
     for (const effect of tr.effects) {
       if (effect.is(addDiagnostics)) {
-        updated = [...updated, ...effect.value];
+        const { range, diags: newDiags } = effect.value;
+        updated = updated.filter(d => !(d.from >= range.from && d.to <= range.to));
+        updated = [...updated, ...newDiags];
       }
     }
     return updated;
@@ -118,9 +123,12 @@ async function checkAccuracy(sentence, sentenceStart, view) {
         replacements: d.replacements || [],
       }));
 
-    if (newDiags.length > 0) {
-      view.dispatch({ effects: addDiagnostics.of(newDiags) });
-    }
+    view.dispatch({
+      effects: addDiagnostics.of({
+        range: { from: sentenceStart, to: sentenceStart + sentence.length },
+        diags: newDiags,
+      }),
+    });
   } catch (err) {
     console.error('Accuracy check failed:', err);
   }
@@ -166,15 +174,17 @@ const sentenceDetector = ViewPlugin.fromClass(class {
 
 // ── Editor setup ─────────────────────────────────────────────────────────────
 
-new EditorView({
-  state: EditorState.create({
-    doc: '',
-    extensions: [
-      basicSetup,
-      diagnosticField,
-      accuracyTooltip,
-      sentenceDetector,
-    ],
-  }),
-  parent: document.getElementById('editor'),
-});
+if (typeof document !== 'undefined' && document.getElementById('editor')) {
+  new EditorView({
+    state: EditorState.create({
+      doc: '',
+      extensions: [
+        basicSetup,
+        diagnosticField,
+        accuracyTooltip,
+        sentenceDetector,
+      ],
+    }),
+    parent: document.getElementById('editor'),
+  });
+}
