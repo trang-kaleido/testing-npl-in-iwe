@@ -9,12 +9,8 @@ from unittest.mock import MagicMock
 
 # ── numpy mock (functional dot product) ──────────────────────────────────────
 
-class _FakeArray(list):
-    pass
-
 numpy_mock = MagicMock()
 numpy_mock.dot.side_effect = lambda a, b: float(sum(x * y for x, y in zip(a, b)))
-numpy_mock.array.side_effect = lambda x: _FakeArray(x)
 sys.modules["numpy"] = numpy_mock
 
 # ── spaCy mock ────────────────────────────────────────────────────────────────
