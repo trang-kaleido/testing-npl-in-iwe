@@ -1,26 +1,10 @@
 import { StateField } from '@codemirror/state';
 import { EditorView, WidgetType, Decoration, keymap } from '@codemirror/view';
+import { FORCED_CONTINUATIONS } from './ghost-data.js';
 
 const TERMINATOR_RE = /[.?!]/;
 
-// Forced continuations: phrases where the next token is grammatically obligatory.
-// Source: IELTS/academic English colligations and dependent prepositions.
-export const FORCED_CONTINUATIONS = [
-  ['have an impact', ' on'],
-  ['According', ' to'],
-  ['in terms', ' of'],
-  ['as a result', ' of'],
-  ['in spite', ' of'],
-  ['regardless', ' of'],
-  ['on behalf', ' of'],
-  ['with regard', ' to'],
-  ['with respect', ' to'],
-  ['in accordance', ' with'],
-  ['as opposed', ' to'],
-  ['a wide range', ' of'],
-  ['a variety', ' of'],
-  ['in the context', ' of'],
-];
+export { FORCED_CONTINUATIONS };
 
 // Build a character-level trie from (phrase, continuation) pairs.
 // Each node: { children: {char: node}, continuation: string | null }
