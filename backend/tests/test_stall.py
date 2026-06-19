@@ -61,11 +61,12 @@ def test_generate_candidates_cohesion_on_short_sentence():
 
 def test_generate_candidates_argument_missing():
     """ROOT verb missing dobj → verb-object candidates."""
+    det = make_token("The", dep_="det", pos_="DET", lemma_="the", is_stop=True)
     verb = make_token("reduce", dep_="ROOT", pos_="VERB", lemma_="reduce")
     subj = make_token("government", dep_="nsubj", pos_="NOUN")
     verb.children = [subj]  # no dobj child
 
-    doc = [subj, verb]
+    doc = [det, subj, verb]
     result = _generate_candidates(doc, {})
     assert result is _VERB_OBJECTS["reduce"]
     assert "emissions" in result
@@ -87,12 +88,13 @@ def test_generate_candidates_collocation():
 
 def test_generate_candidates_lexical_retrieval():
     """No verb-object or collocation match → seeded vocabulary fallback."""
+    det = make_token("The", dep_="det", pos_="DET", lemma_="the", is_stop=True)
     subj = make_token("problem", dep_="nsubj", pos_="NOUN")
     verb = make_token("affects", dep_="ROOT", pos_="VERB", lemma_="affect")
     # "affect" not in _VERB_OBJECTS or _WORD_COLLOCATES
     verb.children = [subj]
 
-    doc = [subj, verb]
+    doc = [det, subj, verb]
     seeded = {"individual convenience": "...", "sustainable environment": "..."}
     result = _generate_candidates(doc, seeded)
     assert "individual" in result
@@ -124,11 +126,12 @@ def test_stall_cohesion_case_returns_linkers():
 
 def test_stall_argument_missing_case_returns_verb_objects():
     """Verb with missing dobj → object candidates for that verb."""
+    det = make_token("The", dep_="det", pos_="DET", lemma_="the", is_stop=True)
     verb = make_token("reduce", dep_="ROOT", pos_="VERB", lemma_="reduce")
     subj = make_token("government", dep_="nsubj", pos_="NOUN")
     verb.children = [subj]
 
-    with patch("main.nlp", _make_mock_nlp([subj, verb])):
+    with patch("main.nlp", _make_mock_nlp([det, subj, verb])):
         resp = client.post(
             "/stall",
             json={
@@ -165,11 +168,12 @@ def test_stall_collocation_case_returns_collocates():
 
 def test_stall_lexical_retrieval_case_returns_vocab_words():
     """No verb-object or collocation match → seeded-vocabulary fallback."""
+    det = make_token("The", dep_="det", pos_="DET", lemma_="the", is_stop=True)
     subj = make_token("problem", dep_="nsubj", pos_="NOUN")
     verb = make_token("affects", dep_="ROOT", pos_="VERB", lemma_="affect")
     verb.children = [subj]
 
-    with patch("main.nlp", _make_mock_nlp([subj, verb])):
+    with patch("main.nlp", _make_mock_nlp([det, subj, verb])):
         resp = client.post(
             "/stall",
             json={
