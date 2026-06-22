@@ -7,7 +7,10 @@ const TERMINATOR_RE = /[.?!]/;
 export { FORCED_CONTINUATIONS };
 
 // Build a character-level trie from (phrase, continuation) pairs.
-// Each node: { children: {char: node}, continuation: string | null }
+// continuation is either a single forced string, or an array of 2-3 branch
+// strings when more than one completion is grammatically valid (e.g. "result"
+// -> [" in", " from"]).
+// Each node: { children: {char: node}, continuation: string | string[] | null }
 export function buildTrie(entries) {
   const root = { children: {}, continuation: null };
   for (const [phrase, cont] of entries) {
@@ -19,6 +22,13 @@ export function buildTrie(entries) {
     node.continuation = cont;
   }
   return root;
+}
+
+function sameContinuation(a, b) {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((v, i) => v === b[i]);
+  }
+  return a === b;
 }
 
 // Returns the forced continuation if the current sentence ends with exactly one
@@ -36,12 +46,20 @@ export function lookupGhost(trie, currentSentence) {
       node = node.children[text[i]];
     }
     if (node && node.continuation !== null) {
-      if (found !== null && found !== node.continuation) return null;
+      if (found !== null && !sameContinuation(found, node.continuation)) return null;
       found = node.continuation;
     }
   }
 
   return found;
+}
+
+// Display text for a suggestion: branches join as "first/rest" (e.g. " in/from").
+// Tab always inserts only the first (primary) branch — see acceptGhostCommand.
+export function formatSuggestion(suggestion) {
+  if (!Array.isArray(suggestion)) return suggestion;
+  const [first, ...rest] = suggestion;
+  return rest.reduce((acc, b) => acc + '/' + b.trimStart(), first);
 }
 
 const TRIE = buildTrie(FORCED_CONTINUATIONS);
@@ -88,7 +106,7 @@ export const ghostField = StateField.define({
     return EditorView.decorations.from(f, ({ suggestion, pos }) => {
       if (!suggestion) return Decoration.none;
       return Decoration.set([
-        Decoration.widget({ widget: new GhostWidget(suggestion), side: 1 }).range(pos),
+        Decoration.widget({ widget: new GhostWidget(formatSuggestion(suggestion)), side: 1 }).range(pos),
       ]);
     });
   },
@@ -97,9 +115,10 @@ export const ghostField = StateField.define({
 export function acceptGhostCommand(view) {
   const { suggestion, pos } = view.state.field(ghostField);
   if (!suggestion) return false;
+  const completion = Array.isArray(suggestion) ? suggestion[0] : suggestion;
   view.dispatch({
-    changes: { from: pos, to: pos, insert: suggestion },
-    selection: { anchor: pos + suggestion.length },
+    changes: { from: pos, to: pos, insert: completion },
+    selection: { anchor: pos + completion.length },
   });
   return true;
 }
