@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EditorState } from '@codemirror/state';
-import { buildTrie, lookupGhost, FORCED_CONTINUATIONS, ghostField } from './ghost.js';
+import { buildTrie, lookupGhost, formatSuggestion, FORCED_CONTINUATIONS, ghostField, acceptGhostCommand } from './ghost.js';
 
 const testTrie = buildTrie([
   ['have an impact', ' on'],
@@ -42,6 +42,42 @@ describe('lookupGhost', () => {
   });
 });
 
+describe('multi-branch continuations', () => {
+  const branchTrie = buildTrie([['result', [' in', ' from']]]);
+
+  it('returns the full branch array on match', () => {
+    expect(lookupGhost(branchTrie, 'this result')).toEqual([' in', ' from']);
+  });
+
+  it('formats branches as "first/rest" for display', () => {
+    expect(formatSuggestion([' in', ' from'])).toBe(' in/from');
+    expect(formatSuggestion([' to', ' that'])).toBe(' to/that');
+    expect(formatSuggestion(' to')).toBe(' to');
+  });
+
+  it('does not treat two matches with equal branch content as conflicting', () => {
+    const trie = buildTrie([
+      ['solution', [' to', ' for']],
+      ['other solution', [' to', ' for']],
+    ]);
+    expect(lookupGhost(trie, 'other solution')).toEqual([' to', ' for']);
+  });
+
+  it('Tab accepts only the first (primary) branch', () => {
+    const doc = 'this is the result';
+    let state = EditorState.create({
+      doc,
+      extensions: [ghostField],
+      selection: { anchor: doc.length },
+    });
+    expect(state.field(ghostField).suggestion).toEqual([' in', ' from']);
+
+    const view = { state, dispatch: (tr) => { state = state.update(tr).state; } };
+    acceptGhostCommand(view);
+    expect(state.doc.toString()).toBe('this is the result in');
+  });
+});
+
 describe('FORCED_CONTINUATIONS', () => {
   it('includes "according" → " to"', () => {
     const entry = FORCED_CONTINUATIONS.find(([p]) => p === 'according');
@@ -68,7 +104,7 @@ describe('ghostField', () => {
   });
 
   it('shows no suggestion when the prefix is not a known phrase', () => {
-    const doc = 'make a difference';
+    const doc = 'make a decision';
     const state = stateAt(doc, doc.length);
     expect(state.field(ghostField).suggestion).toBeNull();
   });
