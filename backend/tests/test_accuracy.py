@@ -1,7 +1,10 @@
+from unittest.mock import MagicMock, patch
+
 import httpx
 import respx
 from fastapi.testclient import TestClient
 
+import main
 from main import app, LANGUAGETOOL_URL
 
 client = TestClient(app)
@@ -93,3 +96,79 @@ def test_languagetool_error_returns_502():
     resp = client.post("/accuracy", json={"sentence": "He go home."})
 
     assert resp.status_code == 502
+
+
+# ── Closed-class GECToR tagger (ADR 0002) ────────────────────────────────────
+
+def make_token(text, idx):
+    t = MagicMock()
+    t.text = text
+    t.idx = idx
+    return t
+
+
+def tokenize(sentence):
+    tokens = []
+    idx = 0
+    for word in sentence.split(" "):
+        tokens.append(make_token(word, idx))
+        idx += len(word) + 1
+    return tokens
+
+
+@respx.mock
+def test_tagger_surfaces_missing_article_lt_misses():
+    respx.post(LANGUAGETOOL_URL).mock(return_value=httpx.Response(200, json=NO_MATCHES))
+    sentence = "He went to school"
+    tokens = tokenize(sentence)  # He went to school
+    tags = ["$KEEP", "$KEEP", "$KEEP", "$APPEND_the"]
+
+    with patch.object(main, "nlp", return_value=tokens), \
+         patch.object(main, "_gector_word_tags", return_value=tags):
+        resp = client.post("/accuracy", json={"sentence": sentence})
+
+    assert resp.status_code == 200
+    diagnostics = resp.json()
+    assert len(diagnostics) == 1
+    assert diagnostics[0]["category"] == "TAGGER_GRAMMAR"
+    assert diagnostics[0]["replacements"] == ["the"]
+
+
+@respx.mock
+def test_tagger_hit_dropped_when_overlapping_lt_match():
+    lt_match = {
+        "matches": [{
+            "message": "Did you mean 'went'?",
+            "offset": 3,
+            "length": 2,
+            "replacements": [{"value": "went"}],
+            "rule": {"id": "X", "category": {"id": "GRAMMAR", "name": "Grammar"}},
+        }]
+    }
+    respx.post(LANGUAGETOOL_URL).mock(return_value=httpx.Response(200, json=lt_match))
+    sentence = "He go to school"
+    tokens = tokenize(sentence)  # He go to school
+    tags = ["$KEEP", "$TRANSFORM_VERB_VB_VBD", "$KEEP", "$KEEP"]
+
+    with patch.object(main, "nlp", return_value=tokens), \
+         patch.object(main, "process_token", return_value="went"), \
+         patch.object(main, "_gector_word_tags", return_value=tags):
+        resp = client.post("/accuracy", json={"sentence": sentence})
+
+    diagnostics = resp.json()
+    assert len(diagnostics) == 1
+    assert diagnostics[0]["category"] == "GRAMMAR"
+
+
+@respx.mock
+def test_lexical_replace_tag_is_filtered_out():
+    respx.post(LANGUAGETOOL_URL).mock(return_value=httpx.Response(200, json=NO_MATCHES))
+    sentence = "He need book"
+    tokens = tokenize(sentence)  # He need book
+    tags = ["$KEEP", "$REPLACE_needed", "$KEEP"]
+
+    with patch.object(main, "nlp", return_value=tokens), \
+         patch.object(main, "_gector_word_tags", return_value=tags):
+        resp = client.post("/accuracy", json={"sentence": sentence})
+
+    assert resp.json() == []

@@ -7,5 +7,12 @@ pydantic>=2.0.0
 spacy>=3.8.0
 sentence-transformers>=2.0.0
 numpy>=1.21.0
+torch>=2.6.0
+# Pinned: newer transformers loads encoders via a meta-device path that
+# gector's from_pretrained() doesn't expect.
+transformers==4.49.0
+gector @ git+https://github.com/gotutiyan/gector
 # After installing, download the language model:
 #   python -m spacy download en_core_web_sm
+# data/verb-form-vocab.txt (GECToR's verb-inflection dictionary) is committed.
+# Requires Python >=3.11 (gector's constraint).

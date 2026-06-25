@@ -1,15 +1,28 @@
+import asyncio
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
 import spacy
+import torch
 from sentence_transformers import SentenceTransformer
 import numpy as np
+from gector import GECToR, load_verb_dict
+from gector.predict import get_word_masks_from_word_ids, process_token
+from transformers import AutoTokenizer
 
 LANGUAGETOOL_URL = "http://localhost:8081/v2/check"
+GECTOR_MODEL_ID = "gotutiyan/gector-roberta-base-5k"
+VERB_DICT_PATH = "data/verb-form-vocab.txt"
 
 nlp = spacy.load("en_core_web_sm")
 sbert = SentenceTransformer("all-MiniLM-L6-v2")
+
+gector_model = GECToR.from_pretrained(GECTOR_MODEL_ID)
+gector_model.eval()
+gector_tokenizer = AutoTokenizer.from_pretrained(GECTOR_MODEL_ID)
+_verb_encode, _verb_decode = load_verb_dict(VERB_DICT_PATH)
 
 # ── Candidate tables ──────────────────────────────────────────────────────────
 
@@ -77,6 +90,15 @@ _COHESION_LINKERS: list[str] = [
     # Conclusion
     "In conclusion,",
 ]
+
+# Closed-class GECToR tags for /accuracy — see ADR 0002. Articles and a short
+# preposition list are permitted for $APPEND_/$REPLACE_; everything else under
+# those prefixes is open-vocabulary lexical generation and is dropped.
+_CLOSED_CLASS_ARTICLES: set[str] = {"a", "an", "the"}
+_CLOSED_CLASS_PREPOSITIONS: set[str] = {
+    "in", "on", "at", "to", "of", "for", "with", "by", "from", "about",
+}
+_CLOSED_CLASS_WORDS: set[str] = _CLOSED_CLASS_ARTICLES | _CLOSED_CLASS_PREPOSITIONS
 
 # ── FastAPI setup ─────────────────────────────────────────────────────────────
 
@@ -178,6 +200,122 @@ def _sbert_scores(candidates: list[str], seed_destination: str) -> list[float]:
     return [float(np.dot(emb, dest_emb)) for emb in embeddings[:-1]]
 
 
+def _is_closed_class_tag(tag: str) -> bool:
+    if tag in ("$KEEP", "$DELETE", "$MERGE_HYPHEN", "$MERGE_SPACE"):
+        return True
+    if tag.startswith("$TRANSFORM_"):
+        return True
+    if tag.startswith("$APPEND_") or tag.startswith("$REPLACE_"):
+        return tag.split("_", 1)[1] in _CLOSED_CLASS_WORDS
+    return False
+
+
+def _gector_word_tags(doc) -> list[str]:
+    """Run the GECToR tagger once and return one tag per spaCy token.
+
+    Word-aligned via spaCy's own tokenization (already loaded for /stall),
+    so spans can be read straight off `token.idx` with no subword realignment.
+    """
+    words = ["$START"] + [t.text for t in doc]
+    batch = gector_tokenizer(
+        [words],
+        return_tensors="pt",
+        is_split_into_words=True,
+        truncation=True,
+        max_length=gector_model.config.max_length,
+        add_special_tokens=not gector_model.config.is_official_model,
+    )
+    word_masks = torch.tensor(get_word_masks_from_word_ids(batch.word_ids, 1))
+    with torch.no_grad():
+        outputs = gector_model.predict(batch["input_ids"], batch["attention_mask"], word_masks)
+
+    raw_labels = outputs.pred_labels[0]
+    per_word: list[str] = []
+    previous_id = None
+    for j, word_id in enumerate(batch.word_ids(0)):
+        if word_id is None:
+            continue
+        if word_id != previous_id:
+            per_word.append(raw_labels[j])
+        previous_id = word_id
+    return per_word[1:]  # drop the synthetic $START slot
+
+
+def _tag_diagnostic(token, next_token, tag: str) -> dict | None:
+    if tag == "$KEEP":
+        return None
+
+    start, end = token.idx, token.idx + len(token.text)
+
+    if tag == "$DELETE":
+        return {
+            "span": {"from": start, "to": end},
+            "category": "TAGGER_GRAMMAR",
+            "message": f"Remove '{token.text}'.",
+            "replacements": [""],
+        }
+
+    if tag in ("$MERGE_HYPHEN", "$MERGE_SPACE") and next_token is not None:
+        joiner = "-" if tag == "$MERGE_HYPHEN" else ""
+        merged = token.text + joiner + next_token.text
+        return {
+            "span": {"from": start, "to": next_token.idx + len(next_token.text)},
+            "category": "TAGGER_GRAMMAR",
+            "message": f"Merge into '{merged}'.",
+            "replacements": [merged],
+        }
+
+    if tag.startswith("$APPEND_"):
+        word = tag[len("$APPEND_"):]
+        return {
+            "span": {"from": end, "to": end},
+            "category": "TAGGER_GRAMMAR",
+            "message": f"Insert '{word}' after '{token.text}'.",
+            "replacements": [word],
+        }
+
+    if tag.startswith("$REPLACE_") or tag.startswith("$TRANSFORM_"):
+        corrected = process_token(token.text, tag, _verb_encode, _verb_decode)
+        if not corrected or corrected == token.text:
+            return None
+        return {
+            "span": {"from": start, "to": end},
+            "category": "TAGGER_GRAMMAR",
+            "message": f"Try '{corrected}' instead of '{token.text}'.",
+            "replacements": [corrected],
+        }
+
+    return None
+
+
+def _tagger_diagnostics(doc) -> list[dict]:
+    tokens = list(doc)
+    if not tokens:
+        return []
+    tags = _gector_word_tags(doc)
+    diagnostics = []
+    for i, (token, tag) in enumerate(zip(tokens, tags)):
+        if not _is_closed_class_tag(tag):
+            continue
+        next_token = tokens[i + 1] if i + 1 < len(tokens) else None
+        diagnostic = _tag_diagnostic(token, next_token, tag)
+        if diagnostic is not None:
+            diagnostics.append(diagnostic)
+    return diagnostics
+
+
+def _spans_overlap(a: dict, b: dict) -> bool:
+    return a["from"] < b["to"] and b["from"] < a["to"]
+
+
+def _merge_diagnostics(lt_diagnostics: list[dict], tagger_diagnostics: list[dict]) -> list[dict]:
+    kept_tagger = [
+        d for d in tagger_diagnostics
+        if not any(_spans_overlap(d["span"], lt["span"]) for lt in lt_diagnostics)
+    ]
+    return lt_diagnostics + kept_tagger
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.post("/stall")
@@ -199,13 +337,12 @@ async def stall(req: StallRequest):
     return [{"text": word, "score": round(score, 4)} for word, score in ranked]
 
 
-@app.post("/accuracy")
-async def accuracy(req: AccuracyRequest):
+async def _languagetool_diagnostics(sentence: str) -> list[dict]:
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(
                 LANGUAGETOOL_URL,
-                data={"text": req.sentence, "language": "en-US"},
+                data={"text": sentence, "language": "en-US"},
                 timeout=10.0,
             )
             resp.raise_for_status()
@@ -225,3 +362,13 @@ async def accuracy(req: AccuracyRequest):
         }
         for m in matches
     ]
+
+
+@app.post("/accuracy")
+async def accuracy(req: AccuracyRequest):
+    doc = nlp(req.sentence)
+    lt_diagnostics, tagger_diagnostics = await asyncio.gather(
+        _languagetool_diagnostics(req.sentence),
+        asyncio.to_thread(_tagger_diagnostics, doc),
+    )
+    return _merge_diagnostics(lt_diagnostics, tagger_diagnostics)
