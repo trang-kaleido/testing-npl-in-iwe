@@ -32,3 +32,15 @@ mock_sbert_instance.encode.side_effect = (
 )
 st_mock.SentenceTransformer.return_value = mock_sbert_instance
 sys.modules["sentence_transformers"] = st_mock
+
+# ── torch / transformers / gector mocks ──────────────────────────────────────
+# main.py loads the GECToR tagger at module scope; tests stub it out and drive
+# tagger behavior by patching main._gector_word_tags directly instead.
+
+sys.modules["torch"] = MagicMock()
+sys.modules["transformers"] = MagicMock()
+
+gector_mock = MagicMock()
+gector_mock.load_verb_dict.return_value = ({}, {})
+sys.modules["gector"] = gector_mock
+sys.modules["gector.predict"] = MagicMock()
